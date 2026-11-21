@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import find_workspace  # noqa: E402
 
 API = os.environ.get("WECHAT_API_BASE", "https://api.weixin.qq.com")
+WECHAT_ARTICLE_HOST = "https://mp.weixin.qq.com/"
 
 ERR_HINTS = {
     40001: "AppSecret 错误或 access_token 失效",
@@ -265,11 +266,22 @@ def cmd_draft(a):
     r = post_json(f"{API}/cgi-bin/draft/add?access_token={tk}", {"articles": [art]})
     media_id = r["media_id"]
     meta["draft_media_id"] = media_id
+    items = post_json(f"{API}/cgi-bin/draft/get?access_token={tk}", {"media_id": media_id}).get("news_item") or []
+    draft_url = wechat_url(items[0].get("url") if items else "")
+    if draft_url:
+        meta["draft_url"] = draft_url
     with open(os.path.join(build, "meta.json"), "w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
     print(f"✅ 草稿已创建 media_id={media_id}\n   到 公众平台 → 内容与互动 → 草稿箱 预览/群发。")
+    if draft_url:
+        print(f"   预览链接（临时）：{draft_url}")
     if a.publish:
         cmd_publish(argparse.Namespace(**{**vars(a), "media_id": media_id}))
+
+
+def wechat_url(url):
+    url = (url or "").replace("http://", "https://", 1)
+    return url if url.startswith(WECHAT_ARTICLE_HOST) else ""
 
 
 def cmd_publish(a):
@@ -296,7 +308,9 @@ def cmd_status(a, quiet=False):
         return False
     print(f"状态：{names.get(st, st)}")
     for item in (r.get("article_detail") or {}).get("item", []):
-        print(f"  文章链接：{item.get('article_url')}")
+        url = wechat_url(item.get("article_url"))
+        if url:
+            print(f"  文章链接：{url}")
     if r.get("fail_idx"):
         print(f"  失败文章序号：{r['fail_idx']}")
     return st != 1

@@ -22,14 +22,15 @@ python3 scripts/publish.py draft articles/<dir>/article_build --cover articles/<
 ```
 - 正文图片自动上传（≤1MB，超出自动压缩；webp/gif 转 jpg；按内容哈希缓存在 `.cache/images.json`）。
 - 封面上传为永久素材；未指定封面时用正文第一张图。
-- 草稿 media_id 写回 `meta.json`。每次 draft 都会新建草稿，提醒用户删掉旧版本。
-- 草稿没有公开链接；用户在「草稿箱」预览后点「群发」，再到「已发表」取链接。
+- 草稿 media_id 和临时预览链接（`draft_url`，https://mp.weixin.qq.com/…）写回 `meta.json` 并打印出来，把链接给用户在微信里查看。每次 draft 都会新建草稿，提醒用户删掉旧版本。
+- 临时链接只用于预览，会过期，不要当正式链接分享；正式链接在群发/发布后获得。
 
 ## 直接发布（需用户明确确认）
 ```bash
 python3 scripts/publish.py publish <draft_media_id> --yes
 python3 scripts/publish.py status <publish_id>
 ```
+发布成功后 `status` 打印正式文章链接（https://mp.weixin.qq.com/s/…），把它给用户。
 `freepublish` 发布的文章**不推送给粉丝**、不进订阅消息，只出现在主页，可分享链接；不可撤回，只能删除。要推送粉丝请在后台手动群发。
 
 ## 错误码

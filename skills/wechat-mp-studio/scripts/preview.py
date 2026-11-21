@@ -49,6 +49,7 @@ button.primary{background:#07c160;border-color:#07c160;color:#fff}
 select:disabled{opacity:.5;cursor:default}
 .info{color:#888;line-height:1.6}
 .warn{color:#b26b00;line-height:1.6;margin-top:6px}
+.wxlink{margin-top:6px;line-height:1.6}.wxlink a{color:#07c160}
 .themes{display:flex;flex-direction:column;gap:2px}
 .trow{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:8px}
 .trow:hover{background:#f5f5f7}
@@ -112,6 +113,7 @@ button:disabled{opacity:.6;cursor:wait}
   <h3>__TITLE__</h3>
   <div class="info" id="info"></div>
   <div class="warn" id="warn"></div>
+  <div class="wxlink" id="wxlink"></div>
   <h4><span>主题（最多 4 个并排对比）</span><span id="count"></span></h4>
   <div class="themes" id="themes"></div>
   <h4><span>消息卡片样式</span></h4>
@@ -119,7 +121,7 @@ button:disabled{opacity:.6;cursor:wait}
   <div class="stage" id="cardstage"></div>
   <p class="info" id="cardnote" style="margin:8px 0 0;font-size:12px"></p>
   <p class="info" style="margin-top:14px">保存 article.md 后页面会自动刷新。<br>
-  「复制」后在公众号编辑器里粘贴即可，本地图片需要重新上传。<br>「设为本文主题」写回 article.md 的 front matter。<br>「推草稿箱」用该主题排版并推送到公众号草稿箱（需已配置凭证和 IP 白名单）。</p>
+  「复制」后在公众号编辑器里粘贴即可，本地图片需要重新上传。<br>「设为本文主题」写回 article.md 的 front matter。<br>「推草稿箱」用该主题排版并推送到公众号草稿箱（需已配置凭证和 IP 白名单），成功后显示 mp.weixin.qq.com 预览链接。</p>
   <div class="gh"><a href="__REPO__" target="_blank" rel="noopener">⭐ Star on GitHub</a>
   <a href="__REPO__/issues/new" target="_blank" rel="noopener">反馈问题</a></div>
 </aside>
@@ -217,6 +219,8 @@ async function draft(p,btn){
   btn.disabled=true; const old=btn.textContent; btn.textContent='推送中…';
   try{const j=await (await fetch('/draft',{method:'POST',body:JSON.stringify({theme:p.theme,scheme:p.scheme})})).json();
     toast(j.ok?'✅ 已推送到草稿箱':'推送失败');
+    if(j.ok&&j.url){const a=document.createElement('a');a.href=j.url;a.target='_blank';a.rel='noopener';
+      a.textContent='在微信中查看草稿（临时链接）↗';$('wxlink').replaceChildren(a)}
     $('warn').textContent=j.ok?'':'⚠ '+(j.error||'').trim().split('\n').slice(-3).join(' ');
   }catch(e){toast('推送失败')}
   btn.disabled=false; btn.textContent=old;
@@ -277,7 +281,12 @@ def push_draft(md_path, ws, theme, scheme):
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if r.returncode != 0:
             return {"ok": False, "error": (r.stderr or r.stdout).strip()}
-    return {"ok": True, "log": r.stdout}
+    try:
+        with open(os.path.join(build, "meta.json"), encoding="utf-8") as fh:
+            url = json.load(fh).get("draft_url", "")
+    except (OSError, ValueError):
+        url = ""
+    return {"ok": True, "log": r.stdout, "url": url if url.startswith("https://mp.weixin.qq.com/") else ""}
 
 
 def make_handler(md_path, ws, state):
