@@ -5,11 +5,12 @@
   python3 preview.py articles/<dir>/article.md [--theme tech-blue] [--scheme 黛蓝] [--port 8765] [--no-open]
 
 功能:
-  - 顶部切换主题 / 配色，即时重新排版
+  - 左侧栏勾选主题（最多 4 个并排对比），每个主题可单独选配色
   - 保存 article.md 后自动刷新（无需重新运行）
   - 「复制到公众号」：复制带内联样式的富文本，可直接粘贴进公众号编辑器
     （本地图片粘贴后需在编辑器里重新上传；用 publish.py draft 推草稿会自动上传）
-  - 「保存为主题」：把当前主题/配色写回 article.md 的 front matter
+  - 「推草稿箱」：用该主题/配色排版并推送到公众号草稿箱
+  - 「设为本文主题」：把该主题/配色写回 article.md 的 front matter
 仅依赖标准库 + convert.py 的依赖（markdown、beautifulsoup4）。
 """
 import argparse
@@ -18,6 +19,7 @@ import json
 import mimetypes
 import os
 import re
+import subprocess
 import sys
 import threading
 import urllib.parse
@@ -35,75 +37,142 @@ PAGE = r"""<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#ececef;font-family:-apple-system,'PingFang SC',sans-serif;color:#222}
-.bar{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);border-bottom:1px solid #ddd;
- padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:13px}
-select,button{font-size:13px;padding:6px 10px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer}
+.layout{display:flex;min-height:100vh}
+.sidebar{position:sticky;top:0;height:100vh;width:300px;flex:none;overflow-y:auto;background:#fff;border-right:1px solid #ddd;
+ padding:18px 16px 24px;font-size:13px}
+.sidebar h3{margin:0 0 4px;font-size:15px}
+.sidebar h4{margin:20px 0 8px;font-size:12px;color:#888;font-weight:500;display:flex;justify-content:space-between}
+select,button{font-size:13px;padding:5px 9px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer}
 button.primary{background:#07c160;border-color:#07c160;color:#fff}
-.info{color:#888}
-.wrap{display:flex;gap:28px;justify-content:center;align-items:flex-start;padding:24px 12px 80px;flex-wrap:wrap}
-.card{width:320px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+select:disabled{opacity:.5;cursor:default}
+.info{color:#888;line-height:1.6}
+.warn{color:#b26b00;line-height:1.6;margin-top:6px}
+.themes{display:flex;flex-direction:column;gap:2px}
+.trow{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:8px}
+.trow:hover{background:#f5f5f7}
+.trow.on{background:#eef8f1}
+.trow label{flex:1;display:flex;align-items:center;gap:8px;cursor:pointer}
+.trow.off label{color:#aaa;cursor:not-allowed}
+.trow select{padding:3px 6px;font-size:12px;max-width:96px}
+.card{width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1)}
 .card img{width:100%;display:block;aspect-ratio:2.35/1;object-fit:cover;background:#ddd}
-.card .t{padding:10px 12px 4px;font-size:16px;font-weight:600;line-height:1.4}
-.card .d{padding:0 12px 12px;font-size:12.5px;color:#888;line-height:1.5}
-.side h4{margin:0 0 8px;font-size:13px;color:#666;font-weight:500}
+.card .t{padding:10px 12px 4px;font-size:15px;font-weight:600;line-height:1.4}
+.card .d{padding:0 12px 12px;font-size:12px;color:#888;line-height:1.5}
+.main{flex:1;min-width:0;overflow-x:auto}
+.phones{display:flex;gap:24px;padding:24px;align-items:flex-start;width:max-content;margin:0 auto}
+.col{display:flex;flex-direction:column;gap:10px}
+.head{display:flex;align-items:center;gap:8px;font-size:13px}
+.head b{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.head button{padding:4px 9px;font-size:12px}
+button:disabled{opacity:.6;cursor:wait}
 .phone{width:390px;background:#fff;border-radius:28px;border:10px solid #1c1c1e;box-shadow:0 6px 30px rgba(0,0,0,.12);overflow:hidden}
 .top{height:44px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;border-bottom:1px solid #f0f0f0}
 .body{padding:20px 16px 40px}
 .body h1.ti{font-size:22px;line-height:1.4;margin:0 0 10px;color:#111}
 .meta{font-size:14px;color:#576b95;margin:0 0 22px}
+.empty{padding:80px 24px;color:#888;font-size:14px}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:8px;
- font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+ font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.on{opacity:.92}
 .err{color:#e5484d;white-space:pre-wrap;font-size:13px}
-@media(max-width:820px){.side{display:none}}
+@media(max-width:820px){.layout{flex-direction:column}.sidebar{position:static;height:auto;width:100%;border-right:0;border-bottom:1px solid #ddd}
+ .phone{width:min(390px,calc(100vw - 32px))}.phones{padding:16px}}
 </style></head><body>
-<div class="bar">
-  <label>主题 <select id="theme"></select></label>
-  <label>配色 <select id="scheme"></select></label>
-  <button id="save">保存为本文主题</button>
-  <button id="copy" class="primary">复制到公众号</button>
-  <span class="info" id="info"></span>
-</div>
-<div class="wrap">
-  <div class="side"><h4>订阅消息卡片</h4>
-    <div class="card"><img id="cover" alt=""><div class="t" id="ctitle"></div><div class="d" id="cdigest"></div></div>
-    <p class="info" style="margin-top:12px;max-width:320px;line-height:1.6">保存 article.md 后页面会自动刷新。<br>
-    「复制到公众号」后在公众号编辑器里粘贴即可，本地图片需要重新上传。</p>
-  </div>
-  <div class="phone"><div class="top">公众号文章</div>
-    <div class="body"><h1 class="ti" id="title"></h1><p class="meta" id="author"></p><div id="article"></div></div>
-  </div>
+<div class="layout">
+<aside class="sidebar">
+  <h3>__TITLE__</h3>
+  <div class="info" id="info"></div>
+  <div class="warn" id="warn"></div>
+  <h4><span>主题（最多 4 个并排对比）</span><span id="count"></span></h4>
+  <div class="themes" id="themes"></div>
+  <h4><span>订阅消息卡片</span></h4>
+  <div class="card"><img id="cover" alt=""><div class="t" id="ctitle"></div><div class="d" id="cdigest"></div></div>
+  <p class="info" style="margin-top:14px">保存 article.md 后页面会自动刷新。<br>
+  「复制」后在公众号编辑器里粘贴即可，本地图片需要重新上传。<br>「设为本文主题」写回 article.md 的 front matter。<br>「推草稿箱」用该主题排版并推送到公众号草稿箱（需已配置凭证和 IP 白名单）。</p>
+</aside>
+<main class="main"><div class="phones" id="phones"></div></main>
 </div>
 <div class="toast" id="toast"></div>
 <script>
-const $=id=>document.getElementById(id);
-let THEMES={}, mtime=0;
+const MAX=4, $=id=>document.getElementById(id);
+let THEMES={}, CURRENT={}, picks=[], mtime=0;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function toast(t){const e=$('toast');e.textContent=t;e.classList.add('on');setTimeout(()=>e.classList.remove('on'),1800)}
-function fillSchemes(){const t=$('theme').value, s=$('scheme'); s.innerHTML='';
-  const list=(THEMES[t]||{}).schemes||[]; s.disabled=!list.length;
-  (list.length?list:['—']).forEach(x=>{const o=document.createElement('option');o.value=list.length?x:'';o.textContent=x;s.appendChild(o)});}
-async function render(){
-  const q=new URLSearchParams({theme:$('theme').value,scheme:$('scheme').value});
-  const r=await fetch('/render?'+q); const j=await r.json();
-  if(j.error){$('article').innerHTML='<p class="err">'+j.error+'</p>';return}
-  $('article').innerHTML=j.html; $('title').textContent=j.meta.title||''; $('ctitle').textContent=j.meta.title||'';
-  $('cdigest').textContent=j.meta.digest||''; $('author').textContent=j.meta.author||'';
-  $('cover').src=j.meta.cover?('/files/'+encodeURI(j.meta.cover)+'?t='+Date.now()):'';
-  $('info').textContent=(j.meta.word_count||0)+' 字'+(j.warnings&&j.warnings.length?' · ⚠ '+j.warnings.join('；'):'');
+function store(){try{localStorage.setItem('wmp-picks',JSON.stringify(picks))}catch(e){}}
+function restore(){try{const v=JSON.parse(localStorage.getItem('wmp-picks')||'null');
+  if(Array.isArray(v)) return v.filter(p=>THEMES[p.theme]).slice(0,MAX)}catch(e){} return null}
+function schemeOf(theme){const p=picks.find(x=>x.theme===theme); return p?p.scheme:''}
+function drawList(){
+  const box=$('themes'); box.innerHTML='';
+  for(const [k,v] of Object.entries(THEMES)){
+    const on=picks.some(p=>p.theme===k), full=!on&&picks.length>=MAX;
+    const row=document.createElement('div'); row.className='trow'+(on?' on':'')+(full?' off':'');
+    row.innerHTML='<label><input type="checkbox"'+(on?' checked':'')+(full?' disabled':'')+'>'+esc(v.label)+'</label>';
+    row.querySelector('input').onchange=e=>toggle(k,e.target.checked);
+    if(v.schemes.length){const s=document.createElement('select'); s.disabled=!on;
+      v.schemes.forEach(x=>{const o=document.createElement('option');o.value=o.textContent=x;s.appendChild(o)});
+      s.value=schemeOf(k)||v.schemes[0]; s.onchange=()=>{const p=picks.find(x=>x.theme===k); if(p){p.scheme=s.value;store();renderOne(p)}};
+      row.appendChild(s)}
+    box.appendChild(row)}
+  $('count').textContent=picks.length+' / '+MAX;
+}
+function toggle(theme,on){
+  if(on){if(picks.length>=MAX) return; picks.push({theme,scheme:(THEMES[theme].schemes[0]||'')})}
+  else picks=picks.filter(p=>p.theme!==theme);
+  store(); drawList(); drawPhones();
+}
+function drawPhones(){
+  const box=$('phones'); box.innerHTML='';
+  if(!picks.length){box.innerHTML='<div class="empty">在左侧勾选主题开始预览</div>';return}
+  picks.forEach(p=>{
+    const col=document.createElement('div'); col.className='col';
+    col.innerHTML='<div class="head"><b></b><button data-a="save">设为本文主题</button><button data-a="copy">复制</button><button data-a="draft" class="primary">推草稿箱</button></div>'+
+      '<div class="phone"><div class="top">公众号文章</div><div class="body"><h1 class="ti"></h1><p class="meta"></p><div class="art"></div></div></div>';
+    col.querySelector('[data-a=save]').onclick=()=>save(p);
+    col.querySelector('[data-a=copy]').onclick=()=>copy(col.querySelector('.art'));
+    col.querySelector('[data-a=draft]').onclick=e=>draft(p,e.target);
+    p.el=col; box.appendChild(col); renderOne(p)});
+}
+async function renderOne(p){
+  const col=p.el; if(!col) return;
+  const v=THEMES[p.theme]; col.querySelector('.head b').textContent=v.label+(p.scheme?' · '+p.scheme:'');
+  const isCur=p.theme===CURRENT.theme&&(p.scheme||'')===(CURRENT.scheme||'');
+  col.querySelector('[data-a=save]').textContent=isCur?'✓ 本文主题':'设为本文主题';
+  const j=await (await fetch('/render?'+new URLSearchParams({theme:p.theme,scheme:p.scheme}))).json();
+  const art=col.querySelector('.art');
+  if(j.error){art.innerHTML='<p class="err">'+esc(j.error)+'</p>';return}
+  art.innerHTML=j.html; col.querySelector('.ti').textContent=j.meta.title||''; col.querySelector('.meta').textContent=j.meta.author||'';
+  if(p===picks[0]){
+    $('ctitle').textContent=j.meta.title||''; $('cdigest').textContent=j.meta.digest||'';
+    $('cover').src=j.meta.cover?('/files/'+encodeURI(j.meta.cover)+'?t='+Date.now()):'';
+    $('info').textContent=(j.meta.word_count||0)+' 字';
+    $('warn').textContent=j.warnings&&j.warnings.length?'⚠ '+j.warnings.join('；'):'';
+  }
   mtime=j.mtime;
 }
+async function copy(el){
+  try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([el.innerHTML],{type:'text/html'}),'text/plain':new Blob([el.innerText],{type:'text/plain'})})]);toast('已复制，去公众号编辑器粘贴')}
+  catch(e){const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand('copy');s.removeAllRanges();toast('已复制')}
+}
+async function save(p){
+  const r=await fetch('/save',{method:'POST',body:JSON.stringify({theme:p.theme,scheme:p.scheme})});
+  if(!(await r.json()).ok) return toast('保存失败');
+  CURRENT={theme:p.theme,scheme:p.scheme}; toast('已写入 article.md 的 front matter'); picks.forEach(renderOne);
+}
+async function draft(p,btn){
+  btn.disabled=true; const old=btn.textContent; btn.textContent='推送中…';
+  try{const j=await (await fetch('/draft',{method:'POST',body:JSON.stringify({theme:p.theme,scheme:p.scheme})})).json();
+    toast(j.ok?'✅ 已推送到草稿箱':'推送失败');
+    $('warn').textContent=j.ok?'':'⚠ '+(j.error||'').trim().split('\n').slice(-3).join(' ');
+  }catch(e){toast('推送失败')}
+  btn.disabled=false; btn.textContent=old;
+}
 async function init(){
-  const j=await (await fetch('/themes')).json(); THEMES=j.themes;
-  for(const [k,v] of Object.entries(THEMES)){const o=document.createElement('option');o.value=k;o.textContent=v.label;$('theme').appendChild(o)}
-  $('theme').value=j.current.theme; fillSchemes(); if(j.current.scheme) $('scheme').value=j.current.scheme;
-  $('theme').onchange=()=>{fillSchemes();render()}; $('scheme').onchange=render;
-  $('copy').onclick=async()=>{const h=$('article').innerHTML;
-    try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([$('article').innerText],{type:'text/plain'})})]);toast('已复制，去公众号编辑器粘贴')}
-    catch(e){const r=document.createRange();r.selectNodeContents($('article'));const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand('copy');s.removeAllRanges();toast('已复制')}};
-  $('save').onclick=async()=>{const r=await fetch('/save',{method:'POST',body:JSON.stringify({theme:$('theme').value,scheme:$('scheme').value})});
-    toast((await r.json()).ok?'已写入 article.md 的 front matter':'保存失败')};
-  await render();
-  setInterval(async()=>{try{const m=(await (await fetch('/mtime')).json()).mtime; if(m!==mtime) render()}catch(e){}},1000);
+  const j=await (await fetch('/themes')).json(); THEMES=j.themes; CURRENT=j.current;
+  picks=restore()||[];
+  if(!picks.length&&THEMES[CURRENT.theme]) picks=[{theme:CURRENT.theme,scheme:CURRENT.scheme||(THEMES[CURRENT.theme].schemes[0]||'')}];
+  drawList(); drawPhones();
+  setInterval(async()=>{try{const m=(await (await fetch('/mtime')).json()).mtime; if(m!==mtime) picks.forEach(renderOne)}catch(e){}},1000);
 }
 init();
 </script></body></html>"""
@@ -140,6 +209,23 @@ def set_front_matter(md_path, updates):
         fh.write("---\n" + "\n".join(lines) + "\n---\n" + body)
 
 
+def push_draft(md_path, ws, theme, scheme):
+    here = os.path.dirname(os.path.abspath(__file__))
+    wsargs = ["--workspace", ws] if ws else []
+    build = os.path.splitext(md_path)[0] + "_build"
+    conv = [sys.executable, os.path.join(here, "convert.py"), md_path, "--out", build, *wsargs]
+    if theme:
+        conv += ["--theme", theme]
+    if scheme:
+        conv += ["--scheme", scheme]
+    steps = [conv, [sys.executable, os.path.join(here, "publish.py"), *wsargs, "draft", build]]
+    for cmd in steps:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if r.returncode != 0:
+            return {"ok": False, "error": (r.stderr or r.stdout).strip()}
+    return {"ok": True, "log": r.stdout}
+
+
 def make_handler(md_path, ws, state):
     base = os.path.dirname(md_path)
 
@@ -169,7 +255,6 @@ def make_handler(md_path, ws, state):
             if u.path == "/render":
                 theme = q.get("theme") or state["theme"]
                 scheme = q.get("scheme") or None
-                state.update(theme=theme, scheme=scheme or "")
                 warnings = []
                 try:
                     import io
@@ -209,7 +294,13 @@ def make_handler(md_path, ws, state):
                 n = int(self.headers.get("Content-Length", 0))
                 d = json.loads(self.rfile.read(n) or b"{}")
                 set_front_matter(md_path, {"theme": d.get("theme"), "scheme": d.get("scheme")})
+                state.update(theme=d.get("theme") or state["theme"], scheme=d.get("scheme") or "")
                 return self._send(200, json.dumps({"ok": True}))
+            if self.path == "/draft":
+                n = int(self.headers.get("Content-Length", 0))
+                d = json.loads(self.rfile.read(n) or b"{}")
+                return self._send(200, json.dumps(push_draft(md_path, ws, d.get("theme"), d.get("scheme")),
+                                                  ensure_ascii=False))
             return self._send(404, "not found", "text/plain")
 
     return H
