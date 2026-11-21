@@ -1,0 +1,17 @@
+{
+  "account_name": "你的公众号名称",
+  "author": "作者名",
+  "author_bio": "",
+  "default_theme": "tech-blue",
+  "default_scheme": "",
+  "default_structure": "tech-deep-dive",
+  "auto_footer": true,
+  "footer": {
+    "text": "觉得有用就点个「在看」，关注「你的公众号名称」获取更多内容。",
+    "qr_image": ""
+  },
+  "default_account": "main",
+  "accounts": {
+    "main": { "appid": "wx________________", "appsecret": "________________________________" }
+  }
+}

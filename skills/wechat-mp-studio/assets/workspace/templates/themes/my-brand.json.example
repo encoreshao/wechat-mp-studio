@@ -1,0 +1,11 @@
+{
+  "label": "我的品牌色",
+  "extends": "tech-blue",
+  "primary": "#e4572e",
+  "h2": "bar",
+  "font": "sans",
+  "code_dark": true,
+  "overrides": {
+    "blockquote": "margin:20px 0;padding:12px 16px;background:#fff7f2;border-left:4px solid #e4572e;color:#555;font-size:14px;"
+  }
+}
