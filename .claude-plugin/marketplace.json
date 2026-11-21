@@ -1,0 +1,14 @@
+{
+  "name": "wechat-mp-studio",
+  "description": "微信公众号创作、排版与发布 skill",
+  "owner": { "name": "Encore Shao", "url": "https://github.com/encoreshao" },
+  "plugins": [
+    {
+      "name": "wechat-mp-studio",
+      "source": "./",
+      "description": "微信公众号文章的创作、排版（15 套主题、本地实时预览）与发布（草稿箱）。",
+      "version": "0.1.1",
+      "category": "productivity"
+    }
+  ]
+}

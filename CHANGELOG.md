@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-11-21
+
+- 中文 README 设为默认（英文版改为 README.en.md）
+- 新增 Claude Code 插件清单：`/plugin marketplace add encoreshao/wechat-mp-studio` 一键安装
+- 新增 `package.sh`：打包上传到 Claude App 的 zip
+
 ## 0.1.0 — 2026-11-21
 
 首个公开版本。

@@ -7,3 +7,4 @@ article_build/
 gallery.html
 config.json
 .DS_Store
+dist/
