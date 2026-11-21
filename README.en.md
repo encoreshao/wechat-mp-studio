@@ -7,7 +7,7 @@ A Claude skill for **writing, formatting, previewing and publishing WeChat Offic
 - ✍️ **Write** — 7 article structure templates, a personal style profile, automatic review (typos, sensitive words, "AI tone")
 - 🎨 **Format** — Markdown → WeChat-safe inline-styled HTML; 15 themes (7 base + 8 styles × 3 color schemes)
 - 🧩 **Components** — callouts, lead, stat cards, quote card, compare, steps, checklist, author card, footer QR
-- 👀 **Local live preview** — phone-width preview in your browser, switch theme/scheme, auto-reload on save, one-click copy into the WeChat editor
+- 👀 **Local live preview** — phone-width preview in your browser, compare up to 4 themes/schemes side by side, check feed/chat/Moments card styles, auto-reload on save, one-click copy into the WeChat editor or push to the draft box
 - 🚀 **Publish** — automatic image upload & compression, push to the draft box, optional direct publish, multiple accounts
 
 ![Local preview](docs/images/preview.png)
@@ -83,6 +83,7 @@ skills/wechat-mp-studio/     ← the skill (install this folder)
   assets/workspace/          workspace template
 examples/hello/              sample article
 tests/                       pytest
+tools/                       dev scripts (regenerate README screenshots)
 install.sh / package.sh      manual install / build the upload zip
 ```
 
