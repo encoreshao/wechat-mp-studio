@@ -1,6 +1,6 @@
 {
   "name": "wechat-mp-studio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "微信公众号文章的创作、排版（15 套主题、本地实时预览）与发布（草稿箱）。",
   "author": { "name": "Encore Shao", "url": "https://github.com/encoreshao" },
   "homepage": "https://github.com/encoreshao/wechat-mp-studio",
